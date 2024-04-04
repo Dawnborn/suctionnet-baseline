@@ -15,6 +15,18 @@ import cv2
 import pykinect_azure as pykinect
 import matplotlib.pyplot as plt
 
+def undistort_image(image, K, dist_coeffs):
+    h, w = image.shape[:2]
+    new_K, roi = cv2.getOptimalNewCameraMatrix(K, dist_coeffs, (w, h), 1, (w, h))
+    undistorted_image = cv2.undistort(image, K, dist_coeffs, None, new_K)
+    return undistorted_image
+
+def undistort_depth(depth, K, dist_coeffs):
+    h, w = depth.shape[:2]
+    mapx, mapy = cv2.initUndistortRectifyMap(K, dist_coeffs, None, K, (w, h), cv2.CV_32FC1)
+    undistorted_depth = cv2.remap(depth, mapx, mapy, cv2.INTER_LINEAR)
+    return undistorted_depth
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='deeplabv3plus_resnet101', help='Model file name [default: votenet]')
 parser.add_argument("--num_classes", type=int, default=2)
@@ -252,7 +264,7 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx):
     rgb = rgb/255.0
     depth = depth/camera_info.scale
     rgb, depth = torch.from_numpy(rgb).float(), torch.from_numpy(depth).float()
-    
+
     depth = torch.clamp(depth, 0, 1)
     if FLAGS.model == 'convnet_resnet101':
         depth = depth.unsqueeze(-1).repeat([1, 1, 3])
@@ -296,6 +308,9 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx):
     point_cloud.colors = o3d.utility.Vector3dVector(rgb.reshape(-1,3))
 
     mask = suctions[:,0]>0.1
+    if not mask.any():
+        print("no suction poses found!")
+        return 
     suction_masked = suctions[mask]
     suction_normals, suction_points = suction_masked[:,1:4], suction_masked[:,4:]
     suction_scores = suction_masked[:,0]
@@ -398,6 +413,25 @@ def inference(scene_idx):
 
     # Start device
     device = pykinect.start_device(config=device_config)
+    print(device.calibration) # 打印内参
+    """
+        Rgb Intrinsic parameters: 
+        cx: 637.8362426757812
+        cy: 363.8018798828125
+        fx: 601.1693115234375
+        fy: 600.8593139648438
+        k1: 0.40146124362945557
+        k2: -2.5951035022735596
+        k3: 1.587603211402893
+        k4: 0.28464314341545105
+        k5: -2.420356512069702
+        k6: 1.510811686515808
+        codx: 0.0
+        cody: 0.0
+        p2: -0.00018864621233660728
+        p1: 0.00040857898420654237
+        metric_radius: 0.0
+    """
     
     anno_idx=9
     while(anno_idx>0):
@@ -415,6 +449,8 @@ def inference(scene_idx):
         if not (ret_depth):
             continue
 
+        ret_colored_depth, transformed_colored_depth_image = capture.get_transformed_colored_depth_image()
+
         # depth = frames.get_depth_frame()
         # color = frames.get_color_frame()
         depth = transformed_depth_image # 720 1280 0-21401
@@ -430,6 +466,22 @@ def inference(scene_idx):
                           0.,           0.,           1.        ]).reshape((3,3))
         fx, fy = intrinsics[0,0], intrinsics[1,1]
         cx, cy = intrinsics[0,2], intrinsics[1,2]
+
+        k1 = 0.40146124362945557
+        k2 = -2.5951035022735596
+        k3 = 1.587603211402893
+        k4 = 0.28464314341545105
+        k5 = -2.420356512069702
+        k6 = 1.510811686515808
+        p2 = -0.00018864621233660728
+        p1 = 0.00040857898420654237
+
+        dist_coeffs = np.array([k1, k2, p1, p2, k3])
+
+        show_image(color)
+        undistorted_color = undistort_image(color_image, intrinsics, dist_coeffs)
+        show_image(undistorted_color)
+
         width = 1280
         height = 720
         scale = 1000.0
