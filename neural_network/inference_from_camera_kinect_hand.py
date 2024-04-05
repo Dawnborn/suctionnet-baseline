@@ -15,6 +15,136 @@ import cv2
 import pykinect_azure as pykinect
 import matplotlib.pyplot as plt
 
+from scipy.spatial.transform import Rotation as R
+import time
+import math
+import datetime
+
+import rtde_control
+import rtde_receive
+import rtde_io
+
+# GET CURRENT POSITION
+ip_robot = "10.3.15.95"
+rtde_r = rtde_receive.RTDEReceiveInterface(ip_robot)
+rtde_c = rtde_control.RTDEControlInterface(ip_robot)
+rtde_io_ = rtde_io.RTDEIOInterface(ip_robot)
+
+home_joint = [0.0785517692565918, -1.3227990430644532, -1.5260076522827148, -1.8056289158263148, 1.6004223823547363, -4.512999359761373]
+# home_joint = [[0.9231476783752441, -1.7742535076537074, -1.5310468673706055, -1.3154333394816895, 1.5701546669006348, -6.127761665974752]]
+target_joint = [1.0150766372680664, -1.8237129650511683, -1.5469045639038086, -1.2950390142253418, 1.5544476509094238, -4.155783478413717]
+
+def analyze_transform_matrix(transform_matrix):
+    """
+    Analyzes a 4x4 transformation matrix.
+    """
+    z_axis_vector = transform_matrix[0:3, 2]
+    world_z_axis_vector = np.array([0, 0, 1])
+    dot_product = np.dot(z_axis_vector, world_z_axis_vector)
+    angle_cosine = dot_product
+    is_obtuse_angle = angle_cosine < 0
+    translation_z = transform_matrix[3, 2]
+    is_above_z0_plane = translation_z > 0.04
+    return (is_obtuse_angle, is_above_z0_plane)
+
+def z_axis_to_rotation_matrix(z_axis):
+    # 确保z_axis是单位向量
+    z_axis = z_axis / np.linalg.norm(z_axis)
+    
+    # 选择一个默认上方向，计算x_axis
+    y_axis_default = np.array([0, 1, 0])
+    x_axis = np.cross(y_axis_default, z_axis)
+    x_axis = x_axis / np.linalg.norm(x_axis)  # 归一化
+    
+    # 计算y_axis
+    y_axis = np.cross(z_axis, x_axis)
+    
+    # 从轴构建旋转矩阵
+    rotation_matrix = np.array([x_axis, y_axis, z_axis]).T
+    
+    # 将旋转矩阵转换为四元数
+    # quaternion = R.from_matrix(rotation_matrix).as_quat()  # [x, y, z, w]
+    
+    return rotation_matrix
+
+def mat2axangle(mat, unit_thresh=1e-5):
+    """Return axis, angle and point from (3, 3) matrix `mat`
+
+    Parameters
+    ----------
+    mat : array-like shape (3, 3)
+        Rotation matrix
+    unit_thresh : float, optional
+        Tolerable difference from 1 when testing for unit eigenvalues to
+        confirm `mat` is a rotation matrix.
+
+    Returns
+    -------
+    axis : array shape (3,)
+       vector giving axis of rotation
+    angle : scalar
+       angle of rotation in radians.
+
+    Examples
+    --------
+    >>> direc = np.random.random(3) - 0.5
+    >>> angle = (np.random.random() - 0.5) * (2*math.pi)
+    >>> R0 = axangle2mat(direc, angle)
+    >>> direc, angle = mat2axangle(R0)
+    >>> R1 = axangle2mat(direc, angle)
+    >>> np.allclose(R0, R1)
+    True
+
+    Notes
+    -----
+    http://en.wikipedia.org/wiki/Rotation_matrix#Axis_of_a_rotation
+    """
+    M = mat
+    # direction: unit eigenvector of R33 corresponding to eigenvalue of 1
+    L, W = np.linalg.eig(M.T)
+    print(L)
+    i = np.where(np.abs(L - 1.0) < unit_thresh)[0]
+    if not len(i):
+        raise ValueError("no unit eigenvector corresponding to eigenvalue 1")
+    direction = np.real(W[:, i[-1]]).squeeze()
+    # rotation angle depending on direction
+    cosa = (np.trace(M) - 1.0) / 2.0
+    if abs(direction[2]) > 1e-8:
+        sina = (M[1, 0] + (cosa - 1.0) * direction[0] * direction[1]) / direction[2]
+    elif abs(direction[1]) > 1e-8:
+        sina = (M[0, 2] + (cosa - 1.0) * direction[0] * direction[2]) / direction[1]
+    else:
+        sina = (M[2, 1] + (cosa - 1.0) * direction[1] * direction[2]) / direction[0]
+    angle = math.atan2(sina, cosa)
+    return direction, angle
+
+# sucker on
+def sucker_on():
+    rtde_io_.setStandardDigitalOut(0, True)
+    rtde_io_.setStandardDigitalOut(1, False)
+    time.sleep(1.0)
+
+# sucker off
+def sucker_off():
+    rtde_io_.setStandardDigitalOut(1, True)
+    rtde_io_.setStandardDigitalOut(0, False)
+    time.sleep(0.5)
+
+def move_robot(new_tcp):
+    actual_q = rtde_r.getActualQ() # joint position
+    actual_tcp = rtde_r.getActualTCPPose()
+    print(actual_tcp)
+
+    rtde_c.moveJ(home_joint)
+    time.sleep(2)
+    rtde_c.moveL(new_tcp, speed=0.1)
+    time.sleep(2)
+    # rtde_c.moveJ(home_joint)
+    sucker_on()
+    rtde_c.moveJ(home_joint)
+    rtde_c.moveJ(target_joint)
+    sucker_off()
+
 def find_top_k_ids(arr, k):
     """
     找到数组中最大的k个数对应的索引。
@@ -136,7 +266,7 @@ def show_image(image):
         return
     
     # 创建窗口并显示图像
-    cv2.imshow('Image', image)
+    cv2.imshow('Image', image[:,:,[2,1,0]])
     
     # 等待用户按下任意键
     cv2.waitKey(0)
@@ -308,7 +438,7 @@ def get_suction_from_heatmap(depth_img, heatmap, camera_info):
 
     return suction_arr, idx0, idx1
 
-def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=np.eye(4)):
+def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=np.eye(4), env_mask=1, top_k=10):
     """
     return: suction_points, suction_normals, suction_scores
     """
@@ -345,6 +475,7 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
     kernel = uniform_kernel(k_size)
     kernel = torch.from_numpy(kernel).unsqueeze(0).unsqueeze(0)
     heatmap = F.conv2d(heatmap, kernel, padding=(kernel.shape[2] // 2, kernel.shape[3] // 2)).squeeze().numpy()
+    heatmap *= env_mask
 
     suctions, idx0, idx1 = get_suction_from_heatmap(depth.numpy(), heatmap, camera_info)
     
@@ -364,14 +495,14 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
 
     # mask = suctions[:,0]>0.1
     mask = suctions[:,0]>0.6
-    mask = find_top_k_ids(suctions[:,0], 10)
+    mask = find_top_k_ids(suctions[:,0], top_k)
     if not mask.any():
         print("no suction poses found!")
         return 
     suction_masked = suctions[mask]
     suction_normals, suction_points = suction_masked[:,1:4], suction_masked[:,4:]
-    suction_points = transform_points(suction_points, hand_eye_m)
-    suction_normals = transform_normals(suction_normals, hand_eye_m)
+    suction_points = transform_points(suction_points, hand_eye_m) # suction_points_robot
+    suction_normals = transform_normals(suction_normals, hand_eye_m) # suction_normals_robot
     suction_scores = suction_masked[:,0]
 
     suction_point_cloud = o3d.geometry.PointCloud()
@@ -496,19 +627,21 @@ def inference(scene_idx):
         metric_radius: 0.0
     """
     
-    anno_idx=9
-    while(anno_idx>0):
+    anno_idx=0
+    num_anno_idx=10
+    inputs_list = []
+    while(anno_idx<num_anno_idx):
 
         # Get capture
         capture = device.update()
         
         # Get the color image from the capture
-        ret_color, color_image = capture.get_color_image()  # (1080, 1920, 4) 0-255
+        ret_color, color_image = capture.get_color_image()  # (720, 1280, 4) 0-255
         if not (ret_color):
             continue
 
         # Get the colored depth
-        ret_depth, transformed_depth_image = capture.get_transformed_depth_image()  # (1080, 1920) 毫米单位深度
+        ret_depth, transformed_depth_image = capture.get_transformed_depth_image()  # (720, 1280, 4) 毫米单位深度
         if not (ret_depth):
             continue
 
@@ -550,10 +683,35 @@ def inference(scene_idx):
         scale = 1000.0
         camera_info = CameraInfo(width, height, fx, fy, cx, cy, scale)
         hand_eye_m = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/hand_eye_result.npy")
+        mask = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/mask.npy")
 
-        suction_points, suction_normals, suction_scores = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m)
+        suction_points, suction_normals, suction_scores = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=5)
+
+        for suction_point, suction_normal, suction_score in zip(suction_points, suction_normals, suction_scores):
+            rotation_matrix = z_axis_to_rotation_matrix(-suction_normal)
+            axis, angle = mat2axangle(rotation_matrix)
+            new_tcp = np.concatenate((suction_point, axis[:3] * angle), axis=0)
+
+            # import pdb; pdb.set_trace()
+            # move_robot(new_tcp+np.array([0, 0, 0.3, 0, 0 , 0]))
+            move_robot(new_tcp+np.array([0, 0, 0.19, 0, 0 , 0]))
+
+            # record the experiment result
+            user_input = input("please input 1/0 for success/fail")
+            
+            # 存储有效输入
+            if user_input in ["1", "0"]:
+                inputs_list.append(user_input)
+            else:
+                print("invalid input! only 1 / 0")
+            break
         
-        anno_idx = anno_idx - 1
+        anno_idx = anno_idx + 1
+    
+    logs = np.asarray(inputs_list)
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    file_name = f"log_{current_time}.txt"
+    np.savetxt(file_name,logs)
 
 if __name__ == "__main__":
     
@@ -563,3 +721,4 @@ if __name__ == "__main__":
         inference(scene_idx)
     
 
+    rtde_c.stopScript()
