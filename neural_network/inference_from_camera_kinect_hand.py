@@ -34,18 +34,19 @@ home_joint = [0.0785517692565918, -1.3227990430644532, -1.5260076522827148, -1.8
 # home_joint = [[0.9231476783752441, -1.7742535076537074, -1.5310468673706055, -1.3154333394816895, 1.5701546669006348, -6.127761665974752]]
 target_joint = [1.0150766372680664, -1.8237129650511683, -1.5469045639038086, -1.2950390142253418, 1.5544476509094238, -4.155783478413717]
 
-def analyze_transform_matrix(transform_matrix):
+def analyze_transform_matrix(z_axis_vector, translation_z):
     """
-    Analyzes a 4x4 transformation matrix.
+    Analyzes z_axis_vector and translation_z.
     """
-    z_axis_vector = transform_matrix[0:3, 2]
+    # z_axis_vector = transform_matrix[0:3, 2]
     world_z_axis_vector = np.array([0, 0, 1])
+    z_axis_vector = z_axis_vector / np.linalg.norm(z_axis_vector)
     dot_product = np.dot(z_axis_vector, world_z_axis_vector)
     angle_cosine = dot_product
-    is_obtuse_angle = angle_cosine < 0
-    translation_z = transform_matrix[3, 2]
+    is_acute_angle = angle_cosine > 0.8
+    # translation_z = transform_matrix[3, 2]
     is_above_z0_plane = translation_z > 0.04
-    return (is_obtuse_angle, is_above_z0_plane)
+    return (is_acute_angle, is_above_z0_plane)
 
 def z_axis_to_rotation_matrix(z_axis):
     # 确保z_axis是单位向量
@@ -138,11 +139,13 @@ def move_robot(new_tcp):
     rtde_c.moveJ(home_joint)
     time.sleep(2)
     rtde_c.moveL(new_tcp, speed=0.1)
-    time.sleep(2)
+    time.sleep(5)
     # rtde_c.moveJ(home_joint)
     sucker_on()
     rtde_c.moveJ(home_joint)
+    time.sleep(2)
     rtde_c.moveJ(target_joint)
+    time.sleep(2)
     sucker_off()
 
 def find_top_k_ids(arr, k):
@@ -685,9 +688,14 @@ def inference(scene_idx):
         hand_eye_m = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/hand_eye_result.npy")
         mask = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/mask.npy")
 
-        suction_points, suction_normals, suction_scores = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=5)
+        suction_points, suction_normals, suction_scores = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=100)
 
         for suction_point, suction_normal, suction_score in zip(suction_points, suction_normals, suction_scores):
+            is_acute_angle, is_above_z0_plane = analyze_transform_matrix(suction_normal, suction_point[2])
+            print(is_acute_angle, is_above_z0_plane)
+            if not (is_acute_angle and is_above_z0_plane):
+                continue
+
             rotation_matrix = z_axis_to_rotation_matrix(-suction_normal)
             axis, angle = mat2axangle(rotation_matrix)
             new_tcp = np.concatenate((suction_point, axis[:3] * angle), axis=0)

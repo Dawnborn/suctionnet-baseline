@@ -503,12 +503,12 @@ def inference(scene_idx):
         capture = device.update()
         
         # Get the color image from the capture
-        ret_color, color_image = capture.get_color_image()  # (1080, 1920, 4) 0-255
+        ret_color, color_image = capture.get_color_image()  # (1080, 1920, 4) (720, 1280, 4) 0-255
         if not (ret_color):
             continue
 
         # Get the colored depth
-        ret_depth, transformed_depth_image = capture.get_transformed_depth_image()  # (1080, 1920) 毫米单位深度
+        ret_depth, transformed_depth_image = capture.get_transformed_depth_image()  # (1080, 1920) (720, 1280, 4) 毫米单位深度
         if not (ret_depth):
             continue
 
