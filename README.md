@@ -139,3 +139,49 @@ if you find our work useful, please cite
   doi={10.1109/LRA.2021.3115406}}
 ```
 
+# My TODO
+
+inference on realsense
+
+上真机测试（包括相机标定等）
+
+inference代码阅读注释文档
+
+用给的数据训练
+
+# MyInstall
+```bash
+conda create -n suctionnet_baseline python=3.8
+pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 -f https://download.pytorch.org/whl/torch_stable.html
+# 失败，cuda 10.1似乎于当前显卡不兼容
+```
+
+```bash
+conda create -n suctionnet_baseline2 python=3.9
+
+pip install torch==1.8.0+cu111 torchvision==0.9.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+
+pip install numpy Pillow scipy tqdm open3d tensorboard opencv-python visdom scikit-learn
+
+pip install pyrealsense2
+```
+
+## 安装kinect(不完整，继续进行需要sudo)
+官方build
+https://github.com/Dawnborn/Azure-Kinect-Sensor-SDK/blob/develop/docs/building.md
+
+```
+conda activate suctionnet_baseline2
+mkdir build
+cd build
+cmake .. -GNinja
+ninja
+
+pip install pykinect_azure
+```
+
+测试结果
+```
+cd /data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline ; /usr/bin/env /home/junpeng.hu/anaconda3/envs/suctionnet_baseline2/bin/python /data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/neural_network/inference_from_camera_kinect.py
+```
+![Alt text](image_kinect.png)

@@ -62,10 +62,11 @@ class DeepLabHeadV3Plus(nn.Module):
         self._init_weight()
 
     def forward(self, feature):
-        low_level_feature = self.project( feature['low_level'] )
-        output_feature = self.aspp(feature['out'])
-        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
-        return self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
+        low_level_feature = self.project( feature['low_level'] ) # 1 256 180 320 -> 1 48 180 320
+        output_feature = self.aspp(feature['out']) # 1 2048 45 80 -> 1 256 45 80
+        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False) # 1 256 45 80 -> 1 256 180 320
+        ans = self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) ) # 1 2 180 320
+        return ans
     
     def _init_weight(self):
         for m in self.modules():
@@ -148,16 +149,19 @@ class ASPPPooling(nn.Sequential):
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
 
 class ASPP(nn.Module):
+    """
+    ASPP（Atrous Spatial Pyramid Pooling，空洞空间金字塔池化）
+    """
     def __init__(self, in_channels, atrous_rates):
         super(ASPP, self).__init__()
         out_channels = 256
         modules = []
         modules.append(nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 1, bias=False),
+            nn.Conv2d(in_channels, out_channels, 1, bias=False), # 2048， 256
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)))
 
-        rate1, rate2, rate3 = tuple(atrous_rates)
+        rate1, rate2, rate3 = tuple(atrous_rates) # 6 12 18
         modules.append(ASPPConv(in_channels, out_channels, rate1))
         modules.append(ASPPConv(in_channels, out_channels, rate2))
         modules.append(ASPPConv(in_channels, out_channels, rate3))
@@ -174,9 +178,10 @@ class ASPP(nn.Module):
     def forward(self, x):
         res = []
         for conv in self.convs:
-            res.append(conv(x))
-        res = torch.cat(res, dim=1)
-        return self.project(res)
+            res.append(conv(x)) # 1 2048 45 80
+        res = torch.cat(res, dim=1) # [1 256 45 80] [1 256 45 80] [1 256 45 80] [1 256 45 80] [1 256 45 80] -> 1 1280 45 80
+        ans = self.project(res)
+        return ans # -> 1 256 45 80
 
 
 
