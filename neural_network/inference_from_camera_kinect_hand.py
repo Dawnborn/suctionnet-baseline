@@ -221,7 +221,7 @@ parser.add_argument('--split', default='test_seen', help='dataset split [default
 parser.add_argument('--camera', default='realsense', help='camera to use [default: kinect]')
 parser.add_argument('--dataset_root', default='/DATA2/Benchmark/graspnet', help='where dataset is')
 parser.add_argument('--save_dir', 
-                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output', 
+                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output_grasping2', 
                     help='Dump dir to save model checkpoint [default: log]')
 parser.add_argument('--checkpoint_path', 
                     default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/ckpt/kinect-deeplabplus-RGBD', 
@@ -593,7 +593,7 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
         print('saving:', sampled_file)
         sampled_img.save(sampled_file) 
 
-    return suction_points, suction_normals, suction_scores
+    return suction_points, suction_normals, suction_scores, point_cloud
 
 
 def inference(scene_idx):
@@ -688,7 +688,7 @@ def inference(scene_idx):
         hand_eye_m = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/hand_eye_result.npy")
         mask = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/mask.npy")
 
-        suction_points, suction_normals, suction_scores = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=100)
+        suction_points, suction_normals, suction_scores, point_cloud = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=100)
 
         for suction_point, suction_normal, suction_score in zip(suction_points, suction_normals, suction_scores):
             is_acute_angle, is_above_z0_plane = analyze_transform_matrix(suction_normal, suction_point[2])
@@ -699,6 +699,11 @@ def inference(scene_idx):
             rotation_matrix = z_axis_to_rotation_matrix(-suction_normal)
             axis, angle = mat2axangle(rotation_matrix)
             new_tcp = np.concatenate((suction_point, axis[:3] * angle), axis=0)
+
+            mesh_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
+            mesh_sphere.translate(suction_point)
+
+            o3d.visualization.draw_geometries([point_cloud, mesh_sphere], point_show_normal=False)
 
             # import pdb; pdb.set_trace()
             # move_robot(new_tcp+np.array([0, 0, 0.3, 0, 0 , 0]))
