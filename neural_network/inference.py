@@ -18,11 +18,11 @@ parser.add_argument('--model', default='deeplabv3plus_resnet101', help='Model fi
 parser.add_argument("--num_classes", type=int, default=2)
 parser.add_argument("--output_stride", type=int, default=16, choices=[8, 16])
 parser.add_argument('--log_dir', default='log_inf', help='Dump dir to save model checkpoint [default: log]')
-parser.add_argument('--split', default='test_seen', help='dataset split [default: test_seen]')
+parser.add_argument('--split', default='test_novel', help='dataset split [default: test_seen]')
 parser.add_argument('--camera', default='kinect', help='camera to use [default: kinect]')
 parser.add_argument('--dataset_root', default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet', help='where dataset is')
 parser.add_argument('--save_dir', 
-                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output', 
+                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output_test', 
                     help='Dump dir to save model checkpoint [default: log]')
 parser.add_argument('--checkpoint_path', 
                     default='/home/junpeng.hu/storage/junpeng/ws_anygrasp/suctionnet-baseline/ckpt/kinect-deeplabplus-RGBD', 
@@ -81,7 +81,7 @@ net = model_map[FLAGS.model](num_classes=FLAGS.num_classes, output_stride=FLAGS.
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 net = nn.DataParallel(net)
 net.to(device)
-   
+
 
 EPOCH_CNT = 0
 if CHECKPOINT_PATH is not None and os.path.isfile(CHECKPOINT_PATH):
@@ -206,7 +206,6 @@ def get_suction_from_heatmap(depth_img, heatmap, camera_info):
     将点云降采样成voxel 0.03的点points_sampled，然后把suction_points加回去
     提取点云法线
     法线与z轴反向
-
     """
     suction_scores, idx0, idx1 = grid_sample(heatmap, down_rate=10, topk=1024)
 
@@ -351,7 +350,7 @@ def inference_one_view(rgb_file, depth_file, meta_file, scene_idx, anno_idx):
 
 def inference(scene_idx):
     
-    for anno_idx in range(256):
+    for anno_idx in range(5):
 
         rgb_file = os.path.join(dataset_root, 'scenes/scene_{:04d}/{}/rgb/{:04d}.png'.format(scene_idx, camera, anno_idx))
         depth_file = os.path.join(dataset_root, 'scenes/scene_{:04d}/{}/depth/{:04d}.png'.format(scene_idx, camera, anno_idx))
@@ -363,20 +362,21 @@ def inference(scene_idx):
 if __name__ == "__main__":
     
     scene_list = [101]
-    # if split == 'test':
-    #     for i in range(100, 190):
-    #         scene_list.append(i)
-    # if split == 'test_seen':
-    #     for i in range(100, 130):
-    #         scene_list.append(i)
-    # elif split == 'test_similiar':
-    #     for i in range(130, 160):
-    #         scene_list.append(i)
-    # elif split == 'test_novel':
-    #     for i in range(160, 190):
-    #         scene_list.append(i)
-    # else:
-    #     print('invalid split')
+    scene_list = []
+    if split == 'test':
+        for i in range(100, 190):
+            scene_list.append(i)
+    if split == 'test_seen':
+        for i in range(100, 130):
+            scene_list.append(i)
+    elif split == 'test_similiar':
+        for i in range(130, 160):
+            scene_list.append(i)
+    elif split == 'test_novel':
+        for i in range(160, 190):
+            scene_list.append(i)
+    else:
+        print('invalid split')
     
     for scene_idx in scene_list:
         inference(scene_idx)

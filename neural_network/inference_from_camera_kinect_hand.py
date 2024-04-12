@@ -30,6 +30,8 @@ rtde_r = rtde_receive.RTDEReceiveInterface(ip_robot)
 rtde_c = rtde_control.RTDEControlInterface(ip_robot)
 rtde_io_ = rtde_io.RTDEIOInterface(ip_robot)
 
+rtde_c.setTcp([0., 0., 0.177, 0., 0., 0.])
+
 home_joint = [0.0785517692565918, -1.3227990430644532, -1.5260076522827148, -1.8056289158263148, 1.6004223823547363, -4.512999359761373]
 # home_joint = [[0.9231476783752441, -1.7742535076537074, -1.5310468673706055, -1.3154333394816895, 1.5701546669006348, -6.127761665974752]]
 target_joint = [1.0150766372680664, -1.8237129650511683, -1.5469045639038086, -1.2950390142253418, 1.5544476509094238, -4.155783478413717]
@@ -43,7 +45,7 @@ def analyze_transform_matrix(z_axis_vector, translation_z):
     z_axis_vector = z_axis_vector / np.linalg.norm(z_axis_vector)
     dot_product = np.dot(z_axis_vector, world_z_axis_vector)
     angle_cosine = dot_product
-    is_acute_angle = angle_cosine > 0.8
+    is_acute_angle = angle_cosine > 0.7
     # translation_z = transform_matrix[3, 2]
     is_above_z0_plane = translation_z > 0.04
     return (is_acute_angle, is_above_z0_plane)
@@ -131,17 +133,34 @@ def sucker_off():
     rtde_io_.setStandardDigitalOut(0, False)
     time.sleep(0.5)
 
-def move_robot(new_tcp):
+def move_robot_home():
     actual_q = rtde_r.getActualQ() # joint position
     actual_tcp = rtde_r.getActualTCPPose()
     print(actual_tcp)
 
     rtde_c.moveJ(home_joint)
     time.sleep(2)
+
+def move_robot(new_tcp, new_normal=np.array([0,0,1])):
+    actual_q = rtde_r.getActualQ() # joint position
+    actual_tcp = rtde_r.getActualTCPPose()
+    print(actual_tcp)
+
+    rtde_c.moveJ(home_joint)
+    time.sleep(2)
+
+    offset = np.zeros(6)
+    offset[:3]+=0.2*new_normal
+
+    rtde_c.moveL(new_tcp+offset, speed=0.1)
+    time.sleep(2)
     rtde_c.moveL(new_tcp, speed=0.1)
-    time.sleep(5)
+    time.sleep(2)
+
     # rtde_c.moveJ(home_joint)
     sucker_on()
+    rtde_c.moveL(new_tcp+offset, speed=0.1)
+    time.sleep(2)
     rtde_c.moveJ(home_joint)
     time.sleep(2)
     rtde_c.moveJ(target_joint)
@@ -218,10 +237,10 @@ parser.add_argument("--num_classes", type=int, default=2)
 parser.add_argument("--output_stride", type=int, default=16, choices=[8, 16])
 parser.add_argument('--log_dir', default='log_inf', help='Dump dir to save model checkpoint [default: log]')
 parser.add_argument('--split', default='test_seen', help='dataset split [default: test_seen]')
-parser.add_argument('--camera', default='realsense', help='camera to use [default: kinect]')
+parser.add_argument('--camera', default='kinect', help='camera to use [default: kinect]')
 parser.add_argument('--dataset_root', default='/DATA2/Benchmark/graspnet', help='where dataset is')
 parser.add_argument('--save_dir', 
-                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output_grasping2', 
+                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output_grasping4', 
                     help='Dump dir to save model checkpoint [default: log]')
 parser.add_argument('--checkpoint_path', 
                     default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/ckpt/kinect-deeplabplus-RGBD', 
@@ -482,7 +501,7 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
 
     suctions, idx0, idx1 = get_suction_from_heatmap(depth.numpy(), heatmap, camera_info)
     
-    save_dir = os.path.join(SAVE_PATH, split, 'scene_%04d'%scene_idx, camera, 'suction')
+    save_dir = os.path.join(SAVE_PATH, split, 'scene_{}'.format(scene_idx), camera, 'suction')
     os.makedirs(save_dir, exist_ok=True)
     suction_numpy_file = os.path.join(save_dir, '%04d.npz'%anno_idx)
     print('Saving:', suction_numpy_file)
@@ -558,19 +577,19 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
         mix_img = mix_img.astype(np.uint8)
         mix_img = Image.fromarray(mix_img)
 
-        score_dir = os.path.join(SAVE_PATH, split, 'scene_%04d'%scene_idx, camera, 'visu')
+        score_dir = os.path.join(SAVE_PATH, split, 'scene_{}'.format(scene_idx), camera, 'visu')
         os.makedirs(score_dir, exist_ok=True)
         score_file = os.path.join(score_dir, '%04d_smoothness.png'%anno_idx)
         print('saving:', score_file)
         score_img.save(score_file)
 
-        center_dir = os.path.join(SAVE_PATH, split, 'scene_%04d'%scene_idx, camera, 'visu')
+        center_dir = os.path.join(SAVE_PATH, split, 'scene_{}'.format(scene_idx), camera, 'visu')
         os.makedirs(center_dir, exist_ok=True)
         center_file = os.path.join(center_dir, '%04d_center.png'%anno_idx)
         print('saving:', center_file)
         center_img.save(center_file)
 
-        mix_dir = os.path.join(SAVE_PATH, split, 'scene_%04d'%scene_idx, camera, 'visu')
+        mix_dir = os.path.join(SAVE_PATH, split, 'scene_{}'.format(scene_idx), camera, 'visu')
         os.makedirs(mix_dir, exist_ok=True)
         mix_file = os.path.join(mix_dir, '%04d_mix.png'%anno_idx)
         print('saving:', mix_file)
@@ -587,7 +606,7 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
         sampled_img = sampled_img.astype(np.uint8)
         sampled_img = Image.fromarray(sampled_img)
         
-        sampled_dir = os.path.join(SAVE_PATH, split, 'scene_%04d'%scene_idx, camera, 'visu')
+        sampled_dir = os.path.join(SAVE_PATH, split, 'scene_{}'.format(scene_idx), camera, 'visu')
         os.makedirs(sampled_dir, exist_ok=True)
         sampled_file = os.path.join(sampled_dir, '%04d_sampled.png'%anno_idx)
         print('saving:', sampled_file)
@@ -606,6 +625,7 @@ def inference(scene_idx):
     device_config.color_format = pykinect.K4A_IMAGE_FORMAT_COLOR_BGRA32
     device_config.color_resolution = pykinect.K4A_COLOR_RESOLUTION_720P
     device_config.depth_mode = pykinect.K4A_DEPTH_MODE_WFOV_2X2BINNED
+    # device_config.depth_mode = pykinect.K4A_DEPTH_MODE_WFOV_UNBINNED
     # print(device_config)
 
     # Start device
@@ -634,7 +654,9 @@ def inference(scene_idx):
     num_anno_idx=10
     inputs_list = []
     while(anno_idx<num_anno_idx):
-
+        
+        move_robot_home()
+        
         # Get capture
         capture = device.update()
         
@@ -687,8 +709,13 @@ def inference(scene_idx):
         camera_info = CameraInfo(width, height, fx, fy, cx, cy, scale)
         hand_eye_m = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/hand_eye_result.npy")
         mask = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/mask.npy")
+        mask = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/mask2.npy")
+        mask = np.load("/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/mask3.npy")
 
-        suction_points, suction_normals, suction_scores, point_cloud = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=100)
+        mask_3d = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
+        color = color*mask_3d
+
+        suction_points, suction_normals, suction_scores, point_cloud = inference_one_view(camera_info, color, depth, scene_idx, anno_idx, hand_eye_m=hand_eye_m, env_mask=mask, top_k=1024)
 
         for suction_point, suction_normal, suction_score in zip(suction_points, suction_normals, suction_scores):
             is_acute_angle, is_above_z0_plane = analyze_transform_matrix(suction_normal, suction_point[2])
@@ -703,14 +730,40 @@ def inference(scene_idx):
             mesh_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
             mesh_sphere.translate(suction_point)
 
-            o3d.visualization.draw_geometries([point_cloud, mesh_sphere], point_show_normal=False)
+            # 创建一个圆柱体
+            height=0.2
+            mesh_cylinder = o3d.geometry.TriangleMesh.create_cylinder(radius=0.01, height=height)
 
-            # import pdb; pdb.set_trace()
-            # move_robot(new_tcp+np.array([0, 0, 0.3, 0, 0 , 0]))
-            move_robot(new_tcp+np.array([0, 0, 0.19, 0, 0 , 0]))
+            # 计算旋转
+            current_direction = np.array([0, 0, 1])  # 当前朝向
+            axis = np.cross(current_direction, suction_normal)  # 旋转轴
+            angle = np.arccos(np.dot(current_direction, suction_normal))  # 旋转角度
 
-            # record the experiment result
-            user_input = input("please input 1/0 for success/fail")
+            # 使用 scipy 来创建旋转矩阵
+            r = R.from_rotvec(axis * angle)
+            rot_matrix = r.as_matrix()
+
+            # 应用旋转
+            mesh_cylinder.rotate(rot_matrix, center=(0, 0, 0))
+
+            # 指定圆柱体的位置
+            translation_vec = suction_point + (suction_normal * height / 2)
+            mesh_cylinder.translate(translation_vec)
+            mesh_cylinder.paint_uniform_color([0.5, 0., 0.])
+
+            o3d.visualization.draw_geometries([point_cloud, mesh_cylinder], point_show_normal=False)
+            user_input = input("please input 1/0 for execute or not")
+            if user_input=="1":
+                # import pdb; pdb.set_trace()
+                # move_robot(new_tcp+np.array([0, 0, 0.4, 0, 0 , 0]))
+                # move_robot(new_tcp+np.array([0, 0, 0.19, 0, 0 , 0]))
+                move_robot(new_tcp, suction_normal)
+
+                
+                # record the experiment result
+                user_input = input("please input 1/0 for success/fail")
+            else:
+                user_input=="0"
             
             # 存储有效输入
             if user_input in ["1", "0"]:
@@ -728,7 +781,8 @@ def inference(scene_idx):
 
 if __name__ == "__main__":
     
-    scene_list = [0]
+    scene_name = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    scene_list = [scene_name]
     
     for scene_idx in scene_list:
         inference(scene_idx)

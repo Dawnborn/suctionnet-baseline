@@ -6,3 +6,5 @@ __pycache__
 ckpt
 inference_output
 inference_output_grasping
+*.mp4
+*.webm
