@@ -150,11 +150,11 @@ inference代码阅读注释文档
 用给的数据训练
 
 # MyInstall
-```bash
+<!-- ```bash
 conda create -n suctionnet_baseline python=3.8
 pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 -f https://download.pytorch.org/whl/torch_stable.html
 # 失败，cuda 10.1似乎于当前显卡不兼容
-```
+``` -->
 
 ```bash
 conda create -n suctionnet_baseline2 python=3.9
@@ -163,7 +163,7 @@ pip install torch==1.8.0+cu111 torchvision==0.9.0+cu111 -f https://download.pyto
 
 pip install numpy Pillow scipy tqdm open3d tensorboard opencv-python visdom scikit-learn
 
-pip install pyrealsense2
+pip install pyrealsense2 # optinal, if you use realsense2
 ```
 
 ## 安装kinect(不完整，继续进行需要sudo)
@@ -172,6 +172,9 @@ https://github.com/Dawnborn/Azure-Kinect-Sensor-SDK/blob/develop/docs/building.m
 
 ```
 conda activate suctionnet_baseline2
+
+git clone https://github.com/Dawnborn/Azure-Kinect-Sensor-SDK.git
+cd Azure-Kinect-Sensor-SDK
 mkdir build
 cd build
 cmake .. -GNinja
@@ -180,8 +183,19 @@ ninja
 pip install pykinect_azure
 ```
 
-测试结果
+测试结果(不带机器人)
 ```
 cd /data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline ; /usr/bin/env /home/junpeng.hu/anaconda3/envs/suctionnet_baseline2/bin/python /data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/neural_network/inference_from_camera_kinect.py
 ```
 ![Alt text](image_kinect.png)
+
+控制机器人
+cd /data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline ; /usr/bin/env /home/junpeng.hu/anaconda3/envs/suctionnet_baseline2/bin/python /data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/neural_network/inference_from_camera_kinect_hand.py
+
+生成mask
+get_mask.ipynb
+
+标定相机
+  选择像素点和深度：get_uvdepth.py
+  计算相机下点坐标和转换矩阵：kinect_calib.ipynb
+  kinect标定结果 hand_eye_result.npy
