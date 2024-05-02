@@ -176,8 +176,8 @@ def train_one_epoch():
         
         pred = net(rgbds)
         
-        score_loss = criterion(pred[:, 0, ...], scores)
-        wrench_loss = criterion(pred[:, 1, ...], wrenches)
+        score_loss = criterion(pred[:, 0, ...], scores) # center score mse loss
+        wrench_loss = criterion(pred[:, 1, ...], wrenches) # seal score mse loss
         loss = score_loss + wrench_loss
 
         loss.backward()

@@ -457,7 +457,10 @@ def inference_one_view(camera_info, rgb, depth, scene_idx, anno_idx, hand_eye_m=
         os.makedirs(sampled_dir, exist_ok=True)
         sampled_file = os.path.join(sampled_dir, '%04d_sampled.png'%anno_idx)
         print('saving:', sampled_file)
-        sampled_img.save(sampled_file) 
+        sampled_img.save(sampled_file)
+
+        cv2.imwrite(os.path.join(rgb_dir,"rgb_{}.png".format(scene_name,anno_idx)),)
+        cv2.imwrite(os.path.join(depth_dir,"depth_{}.png".format(scene_name,anno_idx)),)
 
     return suction_points, suction_normals, suction_scores
 
@@ -518,6 +521,20 @@ def inference(scene_idx):
         # color = frames.get_color_frame()
         depth = transformed_depth_image # 720 1280 0-21401
         color = color_image[:,:,[2,1,0]] # 720 1280 0-256
+        
+        save_input=True
+        if save_input:
+            import datetime
+            scene_name = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+            save_root = "/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/data/our_dataset"
+
+            rgb_dir = os.path.join(save_root,scene_name,"rgb")
+            depth_dir = os.path.join(save_root,scene_name,"depth")
+            os.makedirs(rgb_dir,exist_ok=True)
+            os.makedirs(depth_dir,exist_ok=True)
+
+            cv2.imwrite(os.path.join(rgb_dir,"rgb_{}.png".format(scene_name,anno_idx)),)
+            cv2.imwrite(os.path.join(rgb_dir,"depth_{}.png".format(scene_name,anno_idx)))
 
         # rgb_file = os.path.join(dataset_root, 'scenes/scene_{:04d}/{}/rgb/{:04d}.png'.format(scene_idx, camera, anno_idx))
         # depth_file = os.path.join(dataset_root, 'scenes/scene_{:04d}/{}/depth/{:04d}.png'.format(scene_idx, camera, anno_idx))

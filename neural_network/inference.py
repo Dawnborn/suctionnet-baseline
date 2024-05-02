@@ -22,13 +22,13 @@ parser.add_argument('--split', default='test_novel', help='dataset split [defaul
 parser.add_argument('--camera', default='kinect', help='camera to use [default: kinect]')
 parser.add_argument('--dataset_root', default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet', help='where dataset is')
 parser.add_argument('--save_dir', 
-                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output_test', 
+                    default='/data/hdd1/storage/junpeng/ws_anygrasp/suctionnet-baseline/inference_output_test_offset', 
                     help='Dump dir to save model checkpoint [default: log]')
 parser.add_argument('--checkpoint_path', 
                     default='/home/junpeng.hu/storage/junpeng/ws_anygrasp/suctionnet-baseline/ckpt/kinect-deeplabplus-RGBD', 
                     help='Model checkpoint path [default: None]')
 parser.add_argument('--overwrite', action='store_true', help='Overwrite existing log and dump folders.')
-parser.add_argument('--save_visu', action='store_true', help='whether to save visualizations.')
+parser.add_argument('--save_visu', default=True, help='whether to save visualizations.')
 FLAGS = parser.parse_args()
 
 
@@ -87,7 +87,7 @@ EPOCH_CNT = 0
 if CHECKPOINT_PATH is not None and os.path.isfile(CHECKPOINT_PATH):
     print('Loading model from:')
     print(CHECKPOINT_PATH)
-    checkpoint = torch.load(CHECKPOINT_PATH)
+    checkpoint = torch.load(CHECKPOINT_PATH, map_location=torch.device('cpu'))
     
     net.load_state_dict(checkpoint['model_state_dict'])
 
@@ -200,7 +200,8 @@ def drawGaussian(img, pt, score, sigma=1):
 
 def get_suction_from_heatmap(depth_img, heatmap, camera_info):
     """
-    找到热力图上topk个最大值的点
+    找到热力图上topk个最大值的点 
+        (# 划分成/down_rate个grid，找到每个grid分数最大的点作为grid的分数，然后提取topk个grid，返回这topk个grid的最大值的坐标)
     从深度图恢复点云
     找到原始点云中对应最大得分的点作为suction_points
     将点云降采样成voxel 0.03的点points_sampled，然后把suction_points加回去
@@ -248,7 +249,7 @@ def inference_one_view(rgb_file, depth_file, meta_file, scene_idx, anno_idx):
     camera_info = CameraInfo(width, height, fx, fy, cx, cy, s)
 
     rgb = cv2.imread(rgb_file).astype(np.float32) / 255.0
-    depth = cv2.imread(depth_file, cv2.IMREAD_UNCHANGED).astype(np.float32) / 1000.0
+    depth = cv2.imread(depth_file, cv2.IMREAD_UNCHANGED).astype(np.float32) / 1000.0 + 0.2
     rgb, depth = torch.from_numpy(rgb), torch.from_numpy(depth)
     depth = torch.clamp(depth, 0, 1)
     if FLAGS.model == 'convnet_resnet101':
@@ -265,12 +266,12 @@ def inference_one_view(rgb_file, depth_file, meta_file, scene_idx, anno_idx):
     net.eval()
     tic = time.time()
     with torch.no_grad():
-        pred = net(rgbd) # 1 4 720 1280
+        pred = net(rgbd) # 1 4 720 1280 -> 1 2 720 1280
     pred = pred.clamp(0, 1) # 1 2 720 1280
     toc = time.time()
     print('inference time:', toc - tic)
 
-    heatmap = (pred[0, 0] * pred[0, 1]).cpu().unsqueeze(0).unsqueeze(0)
+    heatmap = (pred[0, 0] * pred[0, 1]).cpu().unsqueeze(0).unsqueeze(0) # seal score * center score
     
     k_size = 15
     kernel = uniform_kernel(k_size)
